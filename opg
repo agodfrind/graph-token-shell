@@ -1,0 +1,132 @@
+#!/bin/bash
+
+echo [INFO] Running java version `java -version 2>&1 | awk -F '"' '/version/ {print $2}'`
+
+# Get PG home location
+: ${PG_HOME:=/opt/oracle/graph}
+
+# Get name of operation to perform / shell to call
+# it can be a shell name (OPG-SHELL or OPG-GROOVY) or GET-TOKEN
+PG_COMMAND=$1
+shift
+
+# Get input parameters: -b|--base_url <baseurl> -u|--username <username> -p|--password <password>
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    -b|--base_url) BASE_URL="$2"; shift ;;
+    -u|--username) USERNAME="$2"; shift ;;
+    -p|--password) PASSWORD="$2"; shift ;;
+    -s|--show) SHOW_TOKEN="Y";;
+    *) OTHER_PARAMS="$OTHER_PARAMS $1"
+  esac
+  shift
+done
+
+# If no PGX URL passed, just call the shell using the original parameters given
+if [ -z "$BASE_URL" ]
+then
+  if [ "$PG_COMMAND" == 'get-token'  ]
+  then
+    read -p "Server URL: " BASE_URL
+  else
+    echo [INFO] Starting $PG_COMMAND in local mode
+    $PG_HOME/bin/$PG_COMMAND $OTHER_PARAMS
+    exit 0
+  fi
+fi
+
+# Prompt for missing information
+if [ -z "$USERNAME" ]
+then
+  read -p "Username: " USERNAME
+fi
+
+if [ -z "$PASSWORD" ]
+then
+  read -s -p "Password: " PASSWORD
+fi
+
+# Get the authorization token
+echo [INFO] Fetching security token from PGX server $BASE_URL
+PGX_RESPONSE=`curl -s -X POST -H 'Content-Type: application/json' -d '{"username": "'"${USERNAME}"'", "password": "'"${PASSWORD}"'"}' ${BASE_URL}/auth/token`
+
+# Did we get any answer back at all ?
+if [ -z "$PGX_RESPONSE" ]
+then
+  echo [ERROR] Error connecting to the PGX server
+  exit 1
+fi
+
+# Extract the token
+PGX_TOKEN=`echo $PGX_RESPONSE | jq -r '.access_token'`
+if [ $PGX_TOKEN == 'null' ]
+then
+  echo [ERROR] Unable to get security token with provided credentials: $PGX_RESPONSE
+  exit 1
+fi
+
+# Extract token type and lifetime
+PGX_TOKEN_TYPE=`echo $PGX_RESPONSE | jq -r '.token_type'`
+PGX_TOKEN_LIFETIME=`echo $PGX_RESPONSE | jq -r '.expires_in'`
+
+# Print token details
+if [ $PG_COMMAND == 'get-token' ] || [ -n "$SHOW_TOKEN" ]
+then
+  echo [DEBUG] Pgx response: $PGX_RESPONSE
+  echo [DEBUG] Token type: $PGX_TOKEN_TYPE
+  echo [DEBUG] Token value: $PGX_TOKEN
+  echo [DEBUG] Token expires in: $PGX_TOKEN_LIFETIME seconds
+  IFS='.'; read -a JWT <<< "$PGX_TOKEN"; unset IFS
+  HEADER=`echo ${JWT[0]} | base64 -d 2>null`
+  PAYLOAD=`echo ${JWT[1]} | base64 -d 2>null`
+  echo [DEBUG] Token header: $HEADER
+  echo [DEBUG] Token payload: $PAYLOAD
+fi
+
+# If we only wanted the token, then print details and we are done
+if [ $PG_COMMAND == 'get-token' ]
+then
+  exit
+fi
+
+# Get name of keystore to hold the stoken
+: ${PGX_KEYSTORE:=pg_keystore_nopass}
+
+# Create the keystore if necessary
+if [ ! -f $PGX_KEYSTORE ]
+then
+
+  # Check if jshell is available
+  jshell --version >/dev/null 2>&1
+  if [ $? -gt 1 ]
+  then
+    echo [ERROR] jshell not available - unable to create keystore
+    exit 1
+  fi
+
+  # Create the keystore
+  echo [INFO] Creating keystore: $PGX_KEYSTORE
+  export PGX_KEYSTORE
+  jshell - <<END
+    import java.io.*;
+    import java.security.KeyStore;
+    var keystore_name = System.getenv().get("PGX_KEYSTORE")
+    var keystore = KeyStore.getInstance("PKCS12");
+    keystore.load(null, null);
+    var out = new FileOutputStream(keystore_name);
+    keystore.store(out, new char[0]);
+END
+
+  # Initialize the keystore
+  echo "" | keytool -importpass -alias AuthorizationToken -keystore $PGX_KEYSTORE -storepass ""
+fi
+
+# Save the authorization token in the password-less keystore
+keytool -delete -alias AuthorizationToken -keystore $PGX_KEYSTORE -storepass ""
+echo $PGX_TOKEN | keytool -importpass -alias AuthorizationToken -keystore $PGX_KEYSTORE -storepass ""
+
+# Start the shell using the keystore
+echo [INFO] Starting $PG_COMMAND
+$PG_HOME/bin/$PG_COMMAND  --keystore_auth_token -k $PGX_KEYSTORE -b $BASE_URL $OTHER_PARAMS
+
+exit

@@ -1,0 +1,5 @@
+#!/bin/bash
+HERE=$(dirname "$0")
+export GROOVY_HOME=/opt/groovy/groovy-2.4.19
+$HERE/opg opg-groovy "$@"
+exit

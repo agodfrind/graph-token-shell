@@ -1,0 +1,4 @@
+#!/bin/bash
+HERE=$(dirname "$0")
+$HERE/opg opg-jshell "$@"
+exit
