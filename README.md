@@ -1,6 +1,6 @@
 # Oracle Graph Shell Helper Tools
 
-Since Oracle Graph 20.3, using the PGX server requires authentication. This is achieved by requesting an authorization token from the PGX server, then passing this authentication with all REST requests to the PGX server. Unfortunately, the authentication is not fully integrated with the core Graph APIs and tools. This means that you need to get the token yourself first (using `curl` or `wget`) then pass it to the graph shell when it prompts you for it.
+Since Oracle Graph 20.3, using the PGX server requires authentication. This is achieved by requesting an authorization token from the PGX server, then passing this token when creating the `ServerInstance` object. Unfortunately, the authentication is not fully integrated with the core Graph APIs and tools. This means that you need to get the token yourself first (using `curl` or `wget`) then pass it to the graph shell when it prompts you for it.
 
 For example:
 ```
