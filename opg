@@ -97,7 +97,12 @@ if [ ! -f $PGX_KEYSTORE ]
 then
 
   # Check if jshell is available
-  jshell --version >/dev/null 2>&1
+  if [[ -n "$JAVA11_HOME" ]] ; then
+    JSHELL=$JAVA11_HOME/bin/jshell
+  else
+    JSHELL=jshell
+  fi
+  $JSHELL --version >/dev/null 2>&1
   if [ $? -gt 1 ]
   then
     echo [ERROR] jshell not available - unable to create keystore - make sure to run java 11 >&2
@@ -107,7 +112,7 @@ then
   # Create the keystore
   echo [INFO] Creating keystore: $PGX_KEYSTORE >&2
   export PGX_KEYSTORE
-  jshell - <<END
+  $JSHELL - <<END
     import java.io.*;
     import java.security.KeyStore;
     var keystore_name = System.getenv().get("PGX_KEYSTORE")
