@@ -96,12 +96,21 @@ fi
 if [ ! -f $PGX_KEYSTORE ]
 then
 
-  # Check if jshell is available
-  if [[ -n "$JAVA11_HOME" ]] ; then
-    JSHELL=$JAVA11_HOME/bin/jshell
+  # Determine Java binaries
+  if [[ -z "$JAVA11_HOME" ]]; then
+      if [[ -z "$JAVA_HOME" ]]; then
+          JSHELL="jshell"
+          KEYTOOL="keytool"
+      else
+          JSHELL="$JAVA_HOME/bin/jshell"
+          KEYTOOL="$JAVA_HOME/bin/keytool"
+      fi
   else
-    JSHELL=jshell
+      JSHELL="$JAVA11_HOME/bin/jshell"
+      KEYTOOL="$JAVA11_HOME/bin/keytool"
   fi
+
+  # Check if jshell is available
   $JSHELL --version >/dev/null 2>&1
   if [ $? -gt 1 ]
   then
@@ -123,7 +132,7 @@ then
 END
 
   # Initialize the keystore
-  echo "" | keytool -importpass -alias AuthorizationToken -keystore $PGX_KEYSTORE -storepass ""
+  echo "" | $KEYTOOL -importpass -alias AuthorizationToken -keystore $PGX_KEYSTORE -storepass ""
 fi
 
 # Save the authorization token in the password-less keystore
